@@ -1,9 +1,13 @@
 import streamlit as st
 import torch
+
+torch.backends.cudnn.benchmark = True  # ✅ speed boost for fixed input sizes
+
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import pickle
 import json
 import time
+
 
 st.set_page_config(
     page_title="Mental Stress Detection AI", 
@@ -18,16 +22,21 @@ def load_model():
     
     tokenizer = AutoTokenizer.from_pretrained('./emotion_model_auto')
     model = AutoModelForSequenceClassification.from_pretrained('./emotion_model_auto')
+    
+    model = model.to(device)   # ✅ MOVE MODEL TO DEVICE
+    
     label_encoder = pickle.load(open('label_encoder_auto.pkl', 'rb'))
     
-    # Load metadata
     try:
         with open('model_metadata.json', 'r') as f:
             metadata = json.load(f)
     except:
         metadata = {}
     
+    model.eval()  # ✅ inference mode (recommended)
+    
     return model, tokenizer, label_encoder, device, metadata
+
 
 with st.spinner("🔄 Loading AI model..."):
     model, tokenizer, label_encoder, device, metadata = load_model()
@@ -80,21 +89,30 @@ if analyze_btn:
         with st.spinner("🤖 Analyzing with AI..."):
             start_time = time.time()
             
-            # Tokenize
+            # Tokenize (creates CPU tensors by default)
             inputs = tokenizer(
                 user_input, 
                 return_tensors="pt", 
                 truncation=True, 
                 padding=True, 
                 max_length=128
-            ).to(device)
+            )
+            
+            # CRITICAL FIX: Move ALL tensors to same device as model
+            inputs = {k: v.to(device) for k, v in inputs.items()}
             
             # Predict
-            with torch.no_grad():
+            with torch.inference_mode():   # even faster than no_grad
+                outputs = model(**inputs)
+
                 outputs = model(**inputs)
                 predictions = torch.nn.functional.softmax(outputs.logits, dim=-1)
                 
-                # Top 5 predictions
+                # Get predicted class
+                predicted_class = torch.argmax(predictions, dim=1).item()
+                confidence = predictions[0][predicted_class].item() * 100
+                
+                # Get top 5 predictions
                 top5_probs, top5_indices = torch.topk(predictions[0], min(5, len(label_encoder.classes_)))
                 top5_emotions = [label_encoder.inverse_transform([idx.item()])[0] 
                                for idx in top5_indices]
@@ -102,9 +120,8 @@ if analyze_btn:
             
             processing_time = time.time() - start_time
             
-            # Primary emotion
-            emotion = top5_emotions[0]
-            confidence = top5_confidences[0]
+            # Decode primary emotion
+            emotion = label_encoder.inverse_transform([predicted_class])[0]
             
             # Display results
             st.divider()
@@ -180,6 +197,7 @@ if analyze_btn:
         st.warning("⚠️ Please enter at least 5 characters for accurate analysis")
     else:
         st.warning("⚠️ Please enter some text to analyze!")
+
 
 # Footer
 st.divider()
