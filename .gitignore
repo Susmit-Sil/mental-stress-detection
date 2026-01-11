@@ -1,0 +1,19 @@
+# Datasets (too large for GitHub)
+*.csv
+*.xlsx
+*.xls
+
+# Model checkpoints (too large)
+results_mega/
+results_auto/
+logs_mega/
+__pycache__/
+*.pyc
+
+# Environment
+venv/
+.env
+
+# OS files
+.DS_Store
+Thumbs.db

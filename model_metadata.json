@@ -1,0 +1,33 @@
+{
+  "total_samples": 21575,
+  "num_classes": 25,
+  "accuracy": 0.8507877664504171,
+  "emotions": [
+    "Admiration",
+    "Amusement",
+    "Anger",
+    "Anxiety",
+    "Bipolar",
+    "Contentment",
+    "Curiosity",
+    "Depression",
+    "Despair",
+    "Excitement",
+    "Fear",
+    "Gratitude",
+    "Happy",
+    "Joy",
+    "Love",
+    "Neutral",
+    "Normal",
+    "Nostalgia",
+    "Personality disorder",
+    "Positive",
+    "Sadness",
+    "Serenity",
+    "Stress",
+    "Suicidal",
+    "Surprise"
+  ],
+  "dataset_used": "balanced_emotion_dataset.csv"
+}
