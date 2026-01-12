@@ -19,7 +19,7 @@ except Exception as e:
 
 # Test 3: Face Detector Module
 try:
-    from face_emotion_detector import detect_emotion_from_image, draw_emotion_on_image
+    from face_emotion_detector_local import detect_emotion_from_image, draw_emotion_on_image
     print("✅ Face emotion detector module: Imported")
 except Exception as e:
     print(f"❌ Face detector import failed: {e}")

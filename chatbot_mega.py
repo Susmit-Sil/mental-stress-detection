@@ -11,7 +11,7 @@ from PIL import Image
 import numpy as np
 
 # Import face detector
-from face_emotion_detector import detect_emotion_from_image, draw_emotion_on_image
+from face_emotion_detector_local import detect_emotion_from_image, draw_emotion_on_image
 
 # MUST BE FIRST - Set page config
 st.set_page_config(
