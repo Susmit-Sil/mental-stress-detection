@@ -1,0 +1,16 @@
+{
+  "model_name": "emotion_model_mega",
+  "model_type": "distilbert-base-uncased",
+  "total_samples": 21575,
+  "num_classes": 25,
+  "accuracy": 0.851,
+  "precision": 0.85,
+  "recall": 0.84,
+  "f1": 0.85,
+  "training_date": "2026-01-12",
+  "datasets_used": [
+    "sentimentdataset.csv",
+    "Combined Data.csv",
+    "dair-ai/emotion"
+  ]
+}
