@@ -35,9 +35,9 @@ def train():
     
     print(f"✅ Train: {len(train_texts):,}, Val: {len(val_texts):,}")
     
-    tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
+    tokenizer = AutoTokenizer.from_pretrained("roberta-base", add_prefix_space=True)
     model = AutoModelForSequenceClassification.from_pretrained(
-        "distilbert-base-uncased", 
+        "roberta-base", 
         num_labels=len(label_encoder.classes_)
     ).to(device)
     

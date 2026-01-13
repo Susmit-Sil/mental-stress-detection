@@ -18,9 +18,9 @@ venv/
 .DS_Store
 Thumbs.db
 
-face_emotion_detector_local.py
-requirements_local.txt
 __pycache__/
 *.pyc
 .venv/
 venv/
+
+/Model-Evaluation/

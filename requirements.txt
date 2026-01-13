@@ -1,12 +1,24 @@
-streamlit==1.31.0
-torch==2.1.0
-torchvision==0.16.0
-transformers==4.36.0
-scikit-learn==1.3.2
-pandas==2.1.4
-numpy==1.26.2
-deepface==0.0.79
-opencv-python-headless==4.8.1.78
-pillow==10.1.0
-tf-keras==2.16.0
-datasets==2.14.0
+# Core ML
+torch>=2.0.0
+torchvision>=0.17.0
+transformers>=4.36.0
+scikit-learn>=1.3.2
+
+# Data
+pandas>=2.1.4
+numpy>=1.26.2
+
+# Streamlit
+streamlit>=1.31.0
+
+# Face Detection
+deepface>=0.0.79
+opencv-python-headless>=4.8.1.78
+pillow>=10.1.0
+tf-keras>=2.16.0
+fer>=22.5.1
+mtcnn>=0.1.1
+moviepy>=1.0.3
+
+# Training
+datasets>=2.14.0
