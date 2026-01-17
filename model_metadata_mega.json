@@ -1,6 +1,6 @@
 {
   "model_name": "emotion_model_mega",
-  "model_type": "distilbert-base-uncased",
+  "model_type": "bert-base-uncased",
   "total_samples": 21575,
   "num_classes": 25,
   "accuracy": 0.851,

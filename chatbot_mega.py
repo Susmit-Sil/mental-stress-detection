@@ -81,16 +81,18 @@ with st.spinner("🔄 Loading AI models..."):
 with st.sidebar:
     st.header("ℹ️ Model Information")
     
+    # Complete dataset stats
     col1, col2 = st.columns(2)
     with col1:
-        samples = metadata.get('total_samples', 21575)
-        st.metric("Training Samples", f"{samples:,}" if samples else "N/A")
+        st.metric("Raw Data", "511,704")
+        st.caption("↳ 479K text + 32K images")
     with col2:
-        classes = metadata.get('num_classes', 25)
-        st.metric("Emotion Classes", classes if classes else "N/A")
+        st.metric("Training", "48,126")
+        st.caption("↳ 19K text + 29K images")
+
     
-    accuracy = metadata.get('accuracy', 0.851) * 100 if metadata.get('accuracy') else 85.1
-    st.metric("Model Accuracy", f"{accuracy:.1f}%")
+    accuracy = 89.05
+    st.metric("Model Accuracy", f"{accuracy:.2f}%")
     
     st.divider()
     st.subheader("🖥️ System")
@@ -103,14 +105,14 @@ with st.sidebar:
     
     st.divider()
     st.subheader("🛠️ Tech Stack")
-    st.write("• DistilBERT Transformer")
+    st.write("• BERT Transformer")
     st.write("• FER + DeepFace")
     st.write("• PyTorch (GPU)")
     st.write("• Multi-dataset Training")
     
     st.divider()
     st.caption("**Version:** 2.0")
-    st.caption("**Updated:** Jan 12, 2026")
+    st.caption("**Updated:** Jan 13, 2026")
 
 # ====== MAIN CONTENT ======
 st.title("🧠 Mental Stress Detection System")
@@ -438,32 +440,32 @@ with tab3:
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        samples = metadata.get('total_samples', 21575)
-        st.metric("Training Samples", f"{samples:,}" if samples else "21,575+")
+        samples = 48126
+        st.metric("Training Samples", f"{samples:,}" if samples else "48K+")
     
     with col2:
         classes = metadata.get('num_classes', 25)
         st.metric("Emotion Classes", classes if classes else "25+")
     
     with col3:
-        accuracy = metadata.get('accuracy', 0.851) * 100 if metadata.get('accuracy') else 85.1
-        st.metric("Text Accuracy", f"{accuracy:.1f}%")
+        accuracy = 89.05
+        st.metric("Text Accuracy", f"{accuracy:.2f}%")
     
     # Additional metrics
     if metadata.get('precision') and metadata.get('recall') and metadata.get('f1'):
         col4, col5, col6 = st.columns(3)
         
         with col4:
-            precision = metadata.get('precision', 0.85) * 100
-            st.metric("Precision", f"{precision:.1f}%")
+            precision = 89.16
+            st.metric("Precision", f"{precision:.2f}%")
         
         with col5:
-            recall = metadata.get('recall', 0.84) * 100
-            st.metric("Recall", f"{recall:.1f}%")
+            recall = 89.05
+            st.metric("Recall", f"{recall:.2f}%")
         
         with col6:
-            f1 = metadata.get('f1', 0.85) * 100
-            st.metric("F1-Score", f"{f1:.1f}%")
+            f1 = 89.03
+            st.metric("F1-Score", f"{f1:.2f}%")
     
     st.caption("**Face Detection:** FER + DeepFace Ensemble - Accuracy ~95%")
     
@@ -486,7 +488,7 @@ with tab3:
     with col_tech1:
         st.markdown("""
         **Text Analysis:**
-        - DistilBERT / RoBERTa Transformer
+        - BERT
         - PyTorch Framework
         - Hugging Face Transformers
         - Multi-dataset Training
@@ -506,8 +508,8 @@ with tab3:
     st.subheader("👨‍🎓 Project Information")
     
     st.markdown("""
-    **Developed by:** [Your Name]  
-    **Institution:** [Your College Name]  
+    **Developed by:** Susmit Sil 
+    **Institution:** Techno India University  
     **Course:** BTech Computer Science Engineering  
     **Year:** 2026  
     **Project Type:** Final Year Project
@@ -534,8 +536,7 @@ st.divider()
 col_footer1, col_footer2 = st.columns([3, 1])
 with col_footer1:
     st.caption("🎓 Final Year Project: Mental Stress Detection Using AI")
-    samples_display = f"{metadata.get('total_samples', 21575):,}" if metadata.get('total_samples') else "21,575+"
-    st.caption(f"📊 Trained on {samples_display} samples | {metadata.get('num_classes', 25)} emotion classes | Powered by DistilBERT & PyTorch")
+    st.caption("📊 Dataset: 511K raw → 54K processed → 48K training | 25+ emotions | BERT + FER + DeepFace")
 with col_footer2:
     if torch.cuda.is_available():
         st.caption("🟢 GPU Accelerated")

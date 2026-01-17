@@ -3,10 +3,12 @@ import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trainer, TrainingArguments
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 import numpy as np
 import pickle
 import os
+import json  # ⬅️ ADDED
+
 
 def train():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -35,9 +37,9 @@ def train():
     
     print(f"✅ Train: {len(train_texts):,}, Val: {len(val_texts):,}")
     
-    tokenizer = AutoTokenizer.from_pretrained("roberta-base", add_prefix_space=True)
+    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
     model = AutoModelForSequenceClassification.from_pretrained(
-        "roberta-base", 
+        "bert-base-uncased", 
         num_labels=len(label_encoder.classes_)
     ).to(device)
     
@@ -59,6 +61,22 @@ def train():
     train_dataset = Dataset(train_enc, train_labels)
     val_dataset = Dataset(val_enc, val_labels)
     
+    # ⬇️ ADDED: Compute metrics function
+    def compute_metrics(eval_pred):
+        predictions, labels = eval_pred
+        predictions = np.argmax(predictions, axis=1)
+        accuracy = accuracy_score(labels, predictions)
+        precision, recall, f1, _ = precision_recall_fscore_support(
+            labels, predictions, average='weighted', zero_division=0
+        )
+        return {
+            'accuracy': accuracy,
+            'precision': precision,
+            'recall': recall,
+            'f1': f1
+        }
+    # ⬆️ END ADDED
+    
     training_args = TrainingArguments(
         output_dir='./results_auto',
         num_train_epochs=3,
@@ -77,21 +95,47 @@ def train():
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
-        compute_metrics=lambda x: {'accuracy': accuracy_score(x[1], np.argmax(x[0], axis=1))}
+        compute_metrics=compute_metrics  # ⬅️ CHANGED from lambda
     )
     
     print("🏋️  Training...")
     trainer.train()
     
     results = trainer.evaluate()
-    print(f"\n✅ Accuracy: {results['eval_accuracy']*100:.2f}%")
     
-    print("💾 Saving...")
+    # ⬇️ CHANGED: Print all 4 metrics
+    print(f"\n{'='*60}")
+    print(f"✅ TEXT MODEL (BERT) METRICS:")
+    print(f"{'='*60}")
+    print(f"Accuracy:  {results['eval_accuracy']*100:.2f}%")
+    print(f"Precision: {results['eval_precision']*100:.2f}%")
+    print(f"Recall:    {results['eval_recall']*100:.2f}%")
+    print(f"F1-Score:  {results['eval_f1']*100:.2f}%")
+    print(f"{'='*60}")
+    # ⬆️ END CHANGED
+    
+    print("\n💾 Saving...")
     model.save_pretrained('./emotion_model_auto')
     tokenizer.save_pretrained('./emotion_model_auto')
     pickle.dump(label_encoder, open('label_encoder_auto.pkl', 'wb'))
     
+    # ⬇️ ADDED: Save metrics to JSON
+    text_metrics = {
+        'model': 'BERT',
+        'accuracy': float(results['eval_accuracy']),
+        'precision': float(results['eval_precision']),
+        'recall': float(results['eval_recall']),
+        'f1': float(results['eval_f1']),
+        'total_samples': len(df),
+        'num_classes': len(label_encoder.classes_)
+    }
+    with open('text_model_metrics.json', 'w') as f:
+        json.dump(text_metrics, f, indent=2)
+    # ⬆️ END ADDED
+    
     print("✅ Done!")
+    print("✅ Metrics saved to: text_model_metrics.json")  # ⬅️ ADDED
+
 
 if __name__ == '__main__':
     train()

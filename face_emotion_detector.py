@@ -209,3 +209,27 @@ def draw_emotion_on_image(image, result):
                    cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
     
     return Image.fromarray(img)
+
+def analyze_face_emotion(image):
+    """
+    Wrapper function for evaluate_face_model.py compatibility
+    Converts detect_emotion_from_image() output to expected format
+    """
+    result = detect_emotion_from_image(image)
+    
+    # Convert format
+    if result.get('success'):
+        return {
+            'status': 'success',
+            'emotion': result['emotion'].lower(),  # Convert to lowercase
+            'confidence': result['confidence'] / 100.0,  # Convert to 0-1 scale
+            'all_emotions': result['all_emotions'],
+            'method': f"Ensemble ({result['num_models']} models)"
+        }
+    else:
+        return {
+            'status': 'error',
+            'message': result.get('error', 'Unknown error'),
+            'emotion': 'neutral',
+            'confidence': 0.0
+        }
