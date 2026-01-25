@@ -17,14 +17,13 @@ from face_emotion_detector import detect_emotion_from_image, draw_emotion_on_ima
 
 # Import WebRTC components
 try:
-    from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode
+    from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
     import av
     from deepface import DeepFace
-    from fer import FER
     WEBRTC_AVAILABLE = True
 except ImportError:
     WEBRTC_AVAILABLE = False
-    print("⚠️ streamlit-webrtc, deepface, or fer not installed. Live video will be disabled.")
+    print("⚠️ streamlit-webrtc or deepface not installed. Live video will be disabled.")
 
 # MUST BE FIRST - Set page config
 st.set_page_config(
@@ -36,9 +35,9 @@ st.set_page_config(
 # Performance optimization
 torch.backends.cudnn.benchmark = True
 
-# ====== WEBRTC VIDEO TRANSFORMER WITH ENSEMBLE ======
+# ====== WEBRTC VIDEO TRANSFORMER WITH DEEPFACE HUD ======
 if WEBRTC_AVAILABLE:
-    class EmotionVideoTransformer(VideoProcessorBase):
+    class EmotionVideoTransformer(VideoTransformerBase):
         def __init__(self):
             # 5 emotions we care about
             self.EMOTIONS = ["angry", "happy", "sad", "surprise", "neutral"]
@@ -48,7 +47,7 @@ if WEBRTC_AVAILABLE:
             self.NEON_PINK = (255, 0, 255)
             
             # Analyze every N frames for smooth performance
-            self.ANALYZE_EVERY_FRAMES = 30  # Every 30 frames (~1 second for ensemble)
+            self.ANALYZE_EVERY_FRAMES = 15  # Analyze every 15 frames (~0.5 seconds at 30fps)
             
             self.emotion_scores = {e: 0.0 for e in self.EMOTIONS}
             self.top_emotion = "neutral"
@@ -56,76 +55,32 @@ if WEBRTC_AVAILABLE:
             self.frame_count = 0
             self.last_analysis_frame = 0
             
-            # Initialize FER for ensemble
-            try:
-                self.fer_detector = FER(mtcnn=True)
-                self.use_ensemble = True
-                print("✅ Ensemble mode enabled (60% FER + 40% DeepFace)")
-            except Exception as e:
-                self.fer_detector = None
-                self.use_ensemble = False
-                print(f"⚠️ FER not available, using DeepFace only: {e}")
-            
         def analyze_emotion(self, frame_bgr):
-            """Run ensemble: 60% FER + 40% DeepFace for better accuracy."""
+            """Run DeepFace and return scores for our 5 emotions."""
             try:
-                if self.use_ensemble and self.fer_detector:
-                    # Get FER predictions
-                    fer_result = self.fer_detector.detect_emotions(frame_bgr)
-                    # Store face bounding box if detected
-                    if fer_result and len(fer_result) > 0:
-                        self.face_box = fer_result[0]["box"]  # (x, y, w, h)
-                    else:
-                        self.face_box = None  # No face detected
-                    # Get DeepFace predictions
-                    deepface_result = DeepFace.analyze(
-                        frame_bgr,
-                        actions=["emotion"],
-                        enforce_detection=False,
-                        silent=True
-                    )
-                    
-                    if fer_result and len(fer_result) > 0:
-                        fer_emotions = fer_result[0]["emotions"]
-                        deepface_emotions = deepface_result[0]["emotion"]
-                        
-                        # Ensemble: 60% FER + 40% DeepFace
-                        for e in self.EMOTIONS:
-                            fer_score = fer_emotions.get(e, 0.0) * 100  # FER gives 0-1, convert to 0-100
-                            deepface_score = deepface_emotions.get(e, 0.0)  # DeepFace gives 0-100
-                            
-                            # Weighted average
-                            self.emotion_scores[e] = (0.6 * fer_score) + (0.4 * deepface_score)
-                    else:
-                        # If FER fails, fallback to DeepFace only
-                        deepface_emotions = deepface_result[0]["emotion"]
-                        for e in self.EMOTIONS:
-                            self.emotion_scores[e] = float(deepface_emotions.get(e, 0.0))
+                result = DeepFace.analyze(
+                    frame_bgr,
+                    actions=["emotion"],
+                    enforce_detection=False,
+                    silent=True
+                )
                 
-                else:
-                    # DeepFace only (fallback)
-                    result = DeepFace.analyze(
-                        frame_bgr,
-                        actions=["emotion"],
-                        enforce_detection=False,
-                        silent=True
-                    )
-                    
-                    emo_dict = result[0]["emotion"]
-                    
-                    for e in self.EMOTIONS:
-                        self.emotion_scores[e] = float(emo_dict.get(e, 0.0))
+                emo_dict = result[0]["emotion"]  # DeepFace full dict
                 
-                # Find top emotion
+                # Keep only our 5 emotions
+                for e in self.EMOTIONS:
+                    self.emotion_scores[e] = float(emo_dict.get(e, 0.0))
+                
+                # Find top emotion among the 5
                 self.top_emotion = max(self.EMOTIONS, key=lambda e: self.emotion_scores[e])
                 self.top_conf = int(self.emotion_scores[self.top_emotion])
                 
             except Exception as e:
-                # Keep previous values on error
+                # If DeepFace fails, keep previous values
                 pass
         
-        def recv(self, frame):
-            img = frame.to_ndarray(format="bgr24").copy()
+        def transform(self, frame):
+            img = frame.to_ndarray(format="bgr24")
             
             # Flip for mirror effect
             img = cv2.flip(img, 1)
@@ -140,81 +95,66 @@ if WEBRTC_AVAILABLE:
             
             # ===== TOP HUD BAR =====
             cv2.rectangle(img, (0, 0), (w, 40), (0, 0, 0), -1)
-            hud_title = "AI FACE EMOTION HUD (ENSEMBLE)" if self.use_ensemble else "AI FACE EMOTION HUD"
-            cv2.putText(img, hud_title,
-                        (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.8, self.NEON_PINK, 2)
+            cv2.putText(img, "AI FACE EMOTION HUD",
+                        (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.9, self.NEON_PINK, 2)
             
-            # ===== WHITE FACE BOX (TRACKS ACTUAL FACE) =====
-            if hasattr(self, 'face_box') and self.face_box is not None:
-                # Use detected face box
-                x, y, box_w, box_h = self.face_box
-
-                # Add padding around detected face
-                padding = 20
-                x = max(0, x - padding)
-                y = max(0, y - padding)
-                box_w = box_w + 2 * padding
-                box_h = box_h + 2 * padding
-
-                # Outer glow-ish white box
-                cv2.rectangle(img, (x - 3, y - 3), (x + box_w + 3, y + box_h + 3),
-                              (200, 200, 200), 2)
-                # Inner solid white box
-                cv2.rectangle(img, (x, y), (x + box_w, y + box_h), self.WHITE, 2)
-
-                # Top label on box: main emotion + %
-                label = f"{self.top_emotion.upper()} ({self.top_conf}%)"
-                cv2.rectangle(img, (x, y - 30), (x + box_w, y), (0, 0, 0), -1)
-                cv2.putText(img, label,
-                            (x + 10, y - 8),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, self.WHITE, 2)
-            else:
-                # Fallback: center box if no face detected
-                box_w, box_h = 260, 300
-                x = w // 2 - box_w // 2
-                y = h // 2 - box_h // 2
-
-                cv2.rectangle(img, (x, y), (x + box_w, y + box_h), self.WHITE, 2)
-
-                # Show "No face detected" message
-                cv2.putText(img, "Position face in frame",
-                            (x + 10, y + box_h // 2),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, self.WHITE, 2)
+            # ===== WHITE FACE BOX (CENTER HUD STYLE) =====
+            box_w, box_h = 260, 300
+            x = w // 2 - box_w // 2
+            y = h // 2 - box_h // 2
             
-            # ===== COMPACT SIDE PANEL WITH BACKGROUND BOX =====
+            # Outer glow-ish white box
+            cv2.rectangle(img, (x - 3, y - 3), (x + box_w + 3, y + box_h + 3),
+                          (200, 200, 200), 2)
+            # Inner solid white box
+            cv2.rectangle(img, (x, y), (x + box_w, y + box_h), self.WHITE, 2)
+            
+            # Top label on box: main emotion + %
+            label = f"{self.top_emotion.upper()} ({self.top_conf}%)"
+            cv2.rectangle(img, (x, y - 30), (x + box_w, y), (0, 0, 0), -1)
+            cv2.putText(img, label,
+                        (x + 10, y - 8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, self.WHITE, 2)
+            
+            # ===== SIDE PANEL WITH ALL 5 EMOTIONS + BARS =====
             panel_x = 15
             panel_y = 60
             line_h = 24
             max_bar_w = 140
             
             # Calculate panel dimensions properly
-            panel_width = 75 + max_bar_w + 10  # 225px total
-            panel_height = len(self.EMOTIONS) * line_h + 20
+            panel_width = 75 + max_bar_w + 10  # text space + bar width + padding = 225px
+            panel_height = len(self.EMOTIONS) * line_h + 25  # Dynamic height
+
+            # Panel ROI bounds (CLAMPED to image size)
+            x1 = max(panel_x - 5, 0)
+            y1 = max(panel_y - 25, 0)
+            x2 = min(panel_x + panel_width, img.shape[1])
+            y2 = min(panel_y + panel_height, img.shape[0])
             
-            # Draw semi-transparent black background
-            overlay = img.copy()
-            cv2.rectangle(overlay, 
-                          (panel_x - 5, panel_y - 25), 
-                          (panel_x + panel_width, panel_y + panel_height),
-                          (0, 0, 0), -1)
-            cv2.addWeighted(overlay, 0.6, img, 0.4, 0, img)
+            roi = img[y1:y2, x1:x2].copy()
+            black = np.zeros_like(roi)
             
+            # Semi-transparent background (no accumulation)
+            cv2.addWeighted(black, 0.5, roi, 0.5, 0, roi)
+            img[y1:y2, x1:x2] = roi
+
             # Title
             cv2.putText(img, "Emotions:",
                         (panel_x, panel_y - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.WHITE, 1)
-            
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.WHITE, 1)  # Smaller font
+
             for i, emo in enumerate(self.EMOTIONS):
                 y_off = panel_y + i * line_h
                 score = self.emotion_scores[emo]
                 bar_w = int((score / 100.0) * max_bar_w)
                 
-                # Emotion name (compact)
+                # Emotion name
                 cv2.putText(img, f"{emo:7s}",
                             (panel_x, y_off),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.WHITE, 1)
                 
-                # Bar background (closer to text)
+                # Bar background
                 cv2.rectangle(img,
                               (panel_x + 75, y_off - 10),
                               (panel_x + 75 + max_bar_w, y_off + 2),
@@ -232,7 +172,7 @@ if WEBRTC_AVAILABLE:
                         (w - 210, h - 20),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, self.WHITE, 1)
             
-            return av.VideoFrame.from_ndarray(img, format="bgr24")
+            return img
 
 # ====== LOAD MODEL (ONCE) ======
 @st.cache_resource
@@ -316,12 +256,12 @@ with st.sidebar:
     st.divider()
     st.subheader("🛠️ Tech Stack")
     st.write("• BERT Transformer")
-    st.write("• FER + DeepFace Ensemble")
+    st.write("• DeepFace AI")
     st.write("• PyTorch (GPU)")
     st.write("• WebRTC Streaming")
     
     st.divider()
-    st.caption("**Version:** 2.2 (Ensemble)")
+    st.caption("**Version:** 2.1")
     st.caption("**Updated:** Jan 25, 2026")
 
 # ====== MAIN CONTENT ======
@@ -603,7 +543,7 @@ with tab2:
 # ====== TAB 3: LIVE VIDEO ANALYSIS ======
 with tab3:
     st.header("🎥 Real-Time Emotion Detection")
-    st.markdown("**Live webcam emotion analysis with AI HUD overlay (ENSEMBLE MODE)**")
+    st.markdown("**Live webcam emotion analysis with AI HUD overlay**")
     
     if not WEBRTC_AVAILABLE:
         st.error("❌ **Required libraries not installed**")
@@ -611,7 +551,7 @@ with tab3:
         To enable live video analysis, install:
         
         ```bash
-        pip install streamlit-webrtc deepface fer
+        pip install streamlit-webrtc deepface
         ```
         
         Then restart the application.
@@ -624,7 +564,7 @@ with tab3:
             webrtc_ctx = webrtc_streamer(
                 key="emotion-detection-live",
                 mode=WebRtcMode.SENDRECV,
-                video_processor_factory=EmotionVideoTransformer,
+                video_transformer_factory=EmotionVideoTransformer,
                 rtc_configuration={
                     "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
                 },
@@ -646,17 +586,17 @@ with tab3:
             st.markdown("### 🎨 Features")
             st.success("""
             ✅ Live face detection  
-            ✅ **ENSEMBLE MODE**
-            ✅ 60% FER + 40% DeepFace
+            ✅ 5 core emotions tracked
             ✅ Real-time HUD overlay  
             ✅ Neon pink highlights  
-            ✅ Compact side panel
+            ✅ Center face box guide
+            ✅ Side panel with bars
             """)
             
             st.markdown("### ⚙️ Performance")
-            st.metric("Expected FPS", "15-25")
-            st.metric("Update Rate", "~1s")
-            st.metric("Accuracy", "85-90%")
+            st.metric("Expected FPS", "20-30")
+            st.metric("Update Rate", "~0.5s")
+            st.metric("Accuracy", "75-85%")
     
     # Additional info
     st.divider()
@@ -676,11 +616,11 @@ with tab3:
     with info_col2:
         st.markdown("### 🔬 Technology")
         st.write("""
-        - **FER:** 60% weight
-        - **DeepFace:** 40% weight
-        - **Ensemble:** Weighted average
+        - **DeepFace:** Multi-model AI
         - **WebRTC:** Real-time stream
-        - **Update:** Every 1 second
+        - **OpenCV:** Video processing
+        - **HUD:** Gaming-style overlay
+        - **Analysis:** Every 0.5 seconds
         """)
     
     with info_col3:
@@ -691,7 +631,7 @@ with tab3:
         - Face in center box
         - Neutral background
         - Direct camera view
-        - Wait 1-2 seconds for analysis
+        - Stable position
         """)
 
 # ====== TAB 4: ABOUT ======
@@ -721,8 +661,7 @@ with tab4:
         accuracy = 89.05
         st.metric("Text Accuracy", f"{accuracy:.2f}%")
     
-    st.caption("**Face Detection (Live):** FER + DeepFace Ensemble (60%-40%) - Accuracy ~90%")
-    st.caption("**Face Detection (Photo):** FER + DeepFace Ensemble - Accuracy ~95%")
+    st.caption("**Face Detection:** DeepFace Multi-model Ensemble - Accuracy ~80%")
     
     # System Info
     st.divider()
@@ -752,10 +691,9 @@ with tab4:
     with col_tech2:
         st.markdown("""
         **Face Analysis:**
-        - FER (Facial Emotion Recognition)
         - DeepFace Multi-model AI
-        - Ensemble Approach (60%-40%)
         - WebRTC Real-time Streaming
+        - OpenCV Video Processing
         - Gaming-style HUD Overlay
         """)
     
@@ -772,12 +710,11 @@ with tab4:
     
     **Features:**
     - Real-time text emotion analysis (25+ emotions)
-    - Webcam/photo-based face emotion detection with ensemble
+    - Webcam/photo-based face emotion detection
     - Live video emotion tracking with gaming HUD
     - Multi-modal stress assessment
     - GPU-accelerated inference
     - WebRTC real-time streaming
-    - 60% FER + 40% DeepFace ensemble for accuracy
     """)
     
     st.divider()
@@ -788,7 +725,7 @@ st.divider()
 col_footer1, col_footer2 = st.columns([3, 1])
 with col_footer1:
     st.caption("🎓 Final Year Project: Mental Stress Detection Using AI")
-    st.caption("📊 Dataset: 511K raw → 54K processed → 48K training | 25+ emotions | BERT + FER + DeepFace Ensemble")
+    st.caption("📊 Dataset: 511K raw → 54K processed → 48K training | 25+ emotions | BERT + DeepFace")
 with col_footer2:
     if torch.cuda.is_available():
         st.caption("🟢 GPU Accelerated")
