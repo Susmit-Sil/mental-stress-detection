@@ -1,7 +1,7 @@
 import streamlit as st
 import cv2
 import numpy as np
-from fer import FER
+from fer.fer import FER
 from deepface import DeepFace
 from PIL import Image, ImageEnhance
 import torch

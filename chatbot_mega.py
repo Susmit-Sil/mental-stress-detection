@@ -20,7 +20,7 @@ try:
     from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode
     import av
     from deepface import DeepFace
-    from fer import FER
+    from fer.fer import FER
     WEBRTC_AVAILABLE = True
 except ImportError:
     WEBRTC_AVAILABLE = False

@@ -1,4 +1,4 @@
-from fer import FER
+from fer.fer import FER
 from deepface import DeepFace
 import cv2
 import numpy as np

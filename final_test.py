@@ -4,7 +4,7 @@ print("="*70)
 
 # Test 1: FER
 try:
-    from fer import FER
+    from fer.fer import FER
     detector = FER(mtcnn=True)
     print("✅ FER with MTCNN: Working")
 except Exception as e:
