@@ -18,7 +18,7 @@ pillow>=10.1.0
 tf-keras>=2.16.0
 fer==22.5.1
 mtcnn>=0.1.1
-moviepy>=1.0.3
+moviepy>=1.0.3,<2.0.0
 
 # WebRTC / Video
 streamlit-webrtc>=0.47.0
@@ -26,3 +26,5 @@ av>=10.0.0
 
 # Training
 datasets>=2.14.0
+accelerate>=1.1.0
+

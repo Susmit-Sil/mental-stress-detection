@@ -4,7 +4,94 @@ import cv2
 import numpy as np
 from PIL import Image, ImageEnhance
 import warnings
+import json
+import os
+import torch
+import torch.nn as nn
+from torchvision import transforms, models
 warnings.filterwarnings('ignore')
+
+# ─────────────────────────────────────────────────────────────
+#  Custom Model & FER Cache (auto-detects trained weights and caches models)
+# ─────────────────────────────────────────────────────────────
+
+_CUSTOM_MODEL      = None   # MobileNetV3-Small instance
+_CUSTOM_LABELS     = None   # {index: emotion_name}
+_CUSTOM_TRANSFORM  = None   # PIL → tensor transform
+_CUSTOM_DEVICE     = None
+
+_CUSTOM_MODEL_PATH  = "models/custom_face_model.pth"
+_CUSTOM_LABELS_PATH = "models/custom_face_labels.json"
+
+_FER_DETECTOR       = None
+
+def _get_fer_detector():
+    """Retrieve or initialize the global FER detector with MTCNN support once."""
+    global _FER_DETECTOR
+    if _FER_DETECTOR is None:
+        try:
+            _FER_DETECTOR = FER(mtcnn=True)
+            print("[√] FER (MTCNN) detector loaded globally")
+        except Exception as e:
+            print(f"[!] FER initialization failed: {e}")
+    return _FER_DETECTOR
+
+
+def _load_custom_model():
+    """Load the custom-trained model once and cache it. Silent if not found."""
+    global _CUSTOM_MODEL, _CUSTOM_LABELS, _CUSTOM_TRANSFORM, _CUSTOM_DEVICE
+
+    if _CUSTOM_MODEL is not None:
+        return True   # already loaded
+
+    if not (os.path.exists(_CUSTOM_MODEL_PATH) and os.path.exists(_CUSTOM_LABELS_PATH)):
+        return False  # not trained yet – that's fine
+
+    try:
+        with open(_CUSTOM_LABELS_PATH) as f:
+            meta = json.load(f)
+
+        num_classes   = meta["num_classes"]
+        idx_to_emotion = {int(k): v for k, v in meta["idx_to_emotion"].items()}
+
+        _CUSTOM_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        model = models.mobilenet_v3_small(weights=None)
+        in_features = model.classifier[-1].in_features
+        model.classifier[-1] = nn.Linear(in_features, num_classes)
+        model.load_state_dict(torch.load(_CUSTOM_MODEL_PATH, map_location=_CUSTOM_DEVICE))
+        model.eval()
+        model.to(_CUSTOM_DEVICE)
+
+        _CUSTOM_MODEL  = model
+        _CUSTOM_LABELS = idx_to_emotion
+        _CUSTOM_TRANSFORM = transforms.Compose([
+            transforms.Resize((48, 48)),
+            transforms.Grayscale(num_output_channels=3),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        ])
+        print("[√] Custom face model loaded")
+        return True
+    except Exception as e:
+        print(f"[!] Custom model load failed: {e}")
+        return False
+
+
+def _predict_custom(pil_image) -> dict:
+    """Run the custom model on a PIL image. Returns {emotion: score_0_to_100}."""
+    if _CUSTOM_MODEL is None:
+        return {}
+    try:
+        tensor = _CUSTOM_TRANSFORM(pil_image).unsqueeze(0).to(_CUSTOM_DEVICE)
+        with torch.no_grad():
+            logits = _CUSTOM_MODEL(tensor)
+            probs  = torch.softmax(logits, dim=1)[0].cpu().numpy()
+
+        return {_CUSTOM_LABELS[i]: float(probs[i]) * 100 for i in range(len(probs))}
+    except Exception as e:
+        print(f"[!] Custom model inference failed: {e}")
+        return {}
 
 def preprocess_face_image(image):
     """
@@ -34,35 +121,45 @@ def preprocess_face_image(image):
 
 def detect_emotion_from_image(image):
     """
-    IMPROVED: Uses ensemble of FER + DeepFace for better accuracy
+    Ensemble: FER (40%) + DeepFace (30%) + Custom Friends Model (30%)
+    Falls back to FER (60%) + DeepFace (40%) if custom model is not trained yet.
     """
     try:
+        # Try loading custom model (silent no-op if not trained yet)
+        custom_available = _load_custom_model()
+
         # Preprocess image first
         image = preprocess_face_image(image)
         img_array = np.array(image)
-        
+
+        # Weights: 3-model ensemble when custom is available, else 2-model fallback
+        w_fer      = 0.40 if custom_available else 0.60
+        w_deepface = 0.30 if custom_available else 0.40
+        w_custom   = 0.30 if custom_available else 0.00
+
         # Store all model results
         all_predictions = []
         
         # ===== MODEL 1: FER with MTCNN (Better face detection) =====
         try:
-            detector_fer = FER(mtcnn=True)  # MTCNN is better than Haar Cascade
-            fer_results = detector_fer.detect_emotions(img_array)
-            
-            if fer_results and len(fer_results) > 0:
-                fer_emotions = fer_results[0]['emotions']
-                face_box = fer_results[0]['box']
+            detector_fer = _get_fer_detector()
+            if detector_fer is not None:
+                fer_results = detector_fer.detect_emotions(img_array)
                 
-                # Normalize to 0-100 scale
-                fer_emotions_normalized = {k: v*100 for k, v in fer_emotions.items()}
-                all_predictions.append({
-                    'emotions': fer_emotions_normalized,
-                    'weight': 0.6,  # FER is more reliable for emotions
-                    'face_box': face_box
-                })
-                print("✅ FER detected face")
+                if fer_results and len(fer_results) > 0:
+                    fer_emotions = fer_results[0]['emotions']
+                    face_box = fer_results[0]['box']
+                    
+                    # Normalize to 0-100 scale
+                    fer_emotions_normalized = {k: v*100 for k, v in fer_emotions.items()}
+                    all_predictions.append({
+                        'emotions': fer_emotions_normalized,
+                        'weight': w_fer,
+                        'face_box': face_box
+                    })
+                    print("[√] FER detected face")
         except Exception as e:
-            print(f"⚠️ FER failed: {e}")
+            print(f"[!] FER failed: {e}")
         
         # ===== MODEL 2: DeepFace (Good for certain emotions) =====
         try:
@@ -79,12 +176,26 @@ def detect_emotion_from_image(image):
             df_emotions = df_result['emotion']
             all_predictions.append({
                 'emotions': df_emotions,
-                'weight': 0.4,  # DeepFace as supporting model
+                'weight': w_deepface,
                 'face_box': None
             })
-            print("✅ DeepFace detected emotions")
+            print("[√] DeepFace detected emotions")
         except Exception as e:
-            print(f"⚠️ DeepFace failed: {e}")
+            print(f"[!] DeepFace failed: {e}")
+
+        # ===== MODEL 3: Custom Friends Model (MobileNetV3) =====
+        if custom_available and w_custom > 0:
+            try:
+                custom_emotions = _predict_custom(image)
+                if custom_emotions:
+                    all_predictions.append({
+                        'emotions': custom_emotions,
+                        'weight': w_custom,
+                        'face_box': None
+                    })
+                    print("[√] Custom model detected emotions")
+            except Exception as e:
+                print(f"[!] Custom model failed: {e}")
         
         # ===== ENSEMBLE: Weighted Average =====
         if not all_predictions:
@@ -118,18 +229,18 @@ def detect_emotion_from_image(image):
         
         # Map to stress levels
         stress_mapping = {
-            'angry': ('High Stress', '🔴', '#ff4444'),
-            'disgust': ('High Stress', '🔴', '#ff4444'),
-            'fear': ('High Stress', '🔴', '#ff4444'),
-            'sad': ('High Stress', '🔴', '#ff4444'),
-            'happy': ('Low Stress', '🟢', '#44ff44'),
-            'surprise': ('Moderate Stress', '🟡', '#ffff44'),
-            'neutral': ('Moderate Stress', '🟡', '#ffff44')
+            'angry': ('High Stress', '[High]', '#ff4444'),
+            'disgust': ('High Stress', '[High]', '#ff4444'),
+            'fear': ('High Stress', '[High]', '#ff4444'),
+            'sad': ('High Stress', '[High]', '#ff4444'),
+            'happy': ('Low Stress', '[Low]', '#44ff44'),
+            'surprise': ('Moderate Stress', '[Mod]', '#ffff44'),
+            'neutral': ('Moderate Stress', '[Mod]', '#ffff44')
         }
         
         stress_level, stress_color, color_code = stress_mapping.get(
             dominant_emotion,
-            ('Unknown', '⚪', '#cccccc')
+            ('Unknown', '[Unknown]', '#cccccc')
         )
         
         # Get face box from first successful detection

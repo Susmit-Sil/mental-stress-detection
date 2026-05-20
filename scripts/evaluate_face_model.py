@@ -1,10 +1,20 @@
 import os
+import sys
 import json
 import numpy as np
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, confusion_matrix
-from face_emotion_detector import analyze_face_emotion
 from PIL import Image
 import cv2
+
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+
+# Add root folder to sys.path so we can import from app
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if BASE_DIR not in sys.path:
+    sys.path.append(BASE_DIR)
+
+from app.face_emotion_detector import analyze_face_emotion
 
 
 def evaluate_face_model():
@@ -12,18 +22,18 @@ def evaluate_face_model():
     Evaluates FER + DeepFace models on FER2013 Test dataset
     """
     
-    # ⬇️ CHANGE THIS to your actual FER folder path
-    test_folder = 'FER/Test'  # or 'E:/Project/Mental-Stress-Detection/FER/Test'
+    # CHANGE THIS to your actual FER folder path
+    test_folder = os.path.join(BASE_DIR, 'FER', 'Test')
     
     if not os.path.exists(test_folder):
-        print(f"❌ Test folder not found: {test_folder}")
+        print(f"[X] Test folder not found: {test_folder}")
         print("   Update the path in evaluate_face_model.py")
         return
     
     # Emotion mapping (FER uses these 7 emotions)
     emotion_folders = ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral']
     
-    print("🔍 Scanning test images...")
+    print(" Scanning test images...")
     
     true_labels = []
     predicted_labels = []
@@ -37,20 +47,20 @@ def evaluate_face_model():
             total_images += len([f for f in os.listdir(emotion_path) 
                                if f.lower().endswith(('.jpg', '.jpeg', '.png'))])
     
-    print(f"📊 Found {total_images:,} test images across {len(emotion_folders)} emotions\n")
+    print(f" Found {total_images:,} test images across {len(emotion_folders)} emotions\n")
     
     # Process each emotion folder
     for emotion in emotion_folders:
         emotion_path = os.path.join(test_folder, emotion)
         
         if not os.path.exists(emotion_path):
-            print(f"⚠️  Skipping {emotion} (folder not found)")
+            print(f"[!] Skipping {emotion} (folder not found)")
             continue
         
         image_files = [f for f in os.listdir(emotion_path) 
                       if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
         
-        print(f"🔄 Processing {emotion}: {len(image_files)} images...")
+        print(f" Processing {emotion}: {len(image_files)} images...")
         
         for img_file in image_files:
             img_path = os.path.join(emotion_path, img_file)
@@ -76,15 +86,15 @@ def evaluate_face_model():
                     
                     # Progress indicator
                     if processed % 100 == 0:
-                        print(f"   ✅ Processed {processed}/{total_images}")
+                        print(f"   Processed {processed}/{total_images}")
                 
             except Exception as e:
                 continue
     
-    print(f"\n✅ Successfully processed {processed}/{total_images} images\n")
+    print(f"\n[√] Successfully processed {processed}/{total_images} images\n")
     
     if len(true_labels) == 0:
-        print("❌ No images were successfully processed!")
+        print("[X] No images were successfully processed!")
         return
     
     # Calculate metrics
@@ -98,7 +108,7 @@ def evaluate_face_model():
     
     # Print results
     print(f"{'='*60}")
-    print(f"✅ FACE MODEL (FER + DeepFace) METRICS:")
+    print(" FACE MODEL (FER + DeepFace) METRICS:")
     print(f"{'='*60}")
     print(f"Accuracy:  {accuracy*100:.2f}%")
     print(f"Precision: {precision*100:.2f}%")
@@ -107,7 +117,7 @@ def evaluate_face_model():
     print(f"{'='*60}")
     
     # Per-emotion accuracy
-    print(f"\n📊 PER-EMOTION ACCURACY:")
+    print("\n PER-EMOTION ACCURACY:")
     print(f"{'='*60}")
     cm = confusion_matrix(true_labels, predicted_labels, labels=emotion_folders)
     for i, emotion in enumerate(emotion_folders):
@@ -131,17 +141,15 @@ def evaluate_face_model():
         }
     }
     
-    with open('face_model_metrics.json', 'w') as f:
+    metrics_path = os.path.join(BASE_DIR, 'models', 'face_model_metrics.json')
+    with open(metrics_path, 'w') as f:
         json.dump(face_metrics, f, indent=2)
     
-    print(f"\n✅ Metrics saved to: face_model_metrics.json")
-
-
+    print(f"\n[√] Metrics saved to: {metrics_path}")
+ 
+ 
 if __name__ == '__main__':
-    print("🚀 Starting Face Model Evaluation...")
+    print(" Starting Face Model Evaluation...")
     print("=" * 60)
     evaluate_face_model()
-    print("\n✅ Evaluation complete!")
-
-
-
+    print("\n Evaluation complete!")

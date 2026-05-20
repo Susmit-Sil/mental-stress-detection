@@ -1,27 +1,41 @@
-# Datasets (too large for GitHub)
+# ── Datasets (too large for GitHub) ──────────────────────────────────────────
 *.csv
 *.xlsx
 *.xls
 
-# Model checkpoints (too large)
-results_mega/
+# Raw datasets folder (drop your CSVs here — not tracked)
+data/raw/
+
+# Auto-generated processed datasets
+data/auto_combined_dataset.csv
+data/auto_balanced_dataset.csv
+datasets/
+
+# ── Model checkpoints ─────────────────────────────────────────────────────────
+models/emotion_model_auto/
 results_auto/
-logs_mega/
+results/
+checkpoint-*/
+*.pth
+*.pt
+*.pkl
+*.safetensors
+*.bin
+
+# ── Python ───────────────────────────────────────────────────────────────────
 __pycache__/
 *.pyc
+*.pyo
 
-# Environment
+# ── Environment ──────────────────────────────────────────────────────────────
 venv/
+.venv/
 .env
 
-# OS files
+# ── OS files ─────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 
-__pycache__/
-*.pyc
-.venv/
-venv/
-
+# ── Large model artifacts ─────────────────────────────────────────────────────
 /Model-Evaluation/
 /FER/

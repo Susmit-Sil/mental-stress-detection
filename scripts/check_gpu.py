@@ -1,6 +1,9 @@
 import torch
 import sys
 
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+
 def check_env_gpu():
     print(f"--- Environment: {sys.prefix} ---")
     print(f"Python Version: {sys.version.split()[0]}")
@@ -14,7 +17,7 @@ def check_env_gpu():
         if torch.cuda.is_available():
             device_id = torch.cuda.current_device()
             gpu_name = torch.cuda.get_device_name(device_id)
-            print(f"[✓] GPU DETECTED: {gpu_name}")
+            print(f"[√] GPU DETECTED: {gpu_name}")
             print(f"    CUDA Version: {torch.version.cuda}")
             print(f"    VRAM Available: {torch.cuda.get_device_properties(device_id).total_memory / 1e9:.2f} GB")
         else:

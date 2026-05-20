@@ -1,4 +1,6 @@
 import os
+import sys
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'app'))
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Hide TensorFlow warnings
 
 import streamlit as st
@@ -24,19 +26,17 @@ try:
     WEBRTC_AVAILABLE = True
 except ImportError:
     WEBRTC_AVAILABLE = False
-    print("⚠️ streamlit-webrtc, deepface, or fer not installed. Live video will be disabled.")
+    print("️ streamlit-webrtc, deepface, or fer not installed. Live video will be disabled.")
 
-# MUST BE FIRST - Set page config
 st.set_page_config(
     page_title="Mental Stress Detection AI", 
-    page_icon="🧠",
+    page_icon="",
     layout="wide"
 )
 
 # Performance optimization
 torch.backends.cudnn.benchmark = True
 
-# ====== WEBRTC VIDEO TRANSFORMER WITH ENSEMBLE ======
 if WEBRTC_AVAILABLE:
     class EmotionVideoTransformer(VideoProcessorBase):
         def __init__(self):
@@ -47,7 +47,6 @@ if WEBRTC_AVAILABLE:
             self.WHITE = (255, 255, 255)
             self.NEON_PINK = (255, 0, 255)
             
-            # Analyze every N frames for smooth performance
             self.ANALYZE_EVERY_FRAMES = 30  # Every 30 frames (~1 second for ensemble)
             
             self.emotion_scores = {e: 0.0 for e in self.EMOTIONS}
@@ -55,73 +54,32 @@ if WEBRTC_AVAILABLE:
             self.top_conf = 0
             self.frame_count = 0
             self.last_analysis_frame = 0
-            
-            # Initialize FER for ensemble
-            try:
-                self.fer_detector = FER(mtcnn=True)
-                self.use_ensemble = True
-                print("✅ Ensemble mode enabled (60% FER + 40% DeepFace)")
-            except Exception as e:
-                self.fer_detector = None
-                self.use_ensemble = False
-                print(f"⚠️ FER not available, using DeepFace only: {e}")
+            self.face_box = None
+            self.use_ensemble = True
             
         def analyze_emotion(self, frame_bgr):
-            """Run ensemble: 60% FER + 40% DeepFace for better accuracy."""
+            """Run ensemble using face_emotion_detector (dynamic weights based on custom model availability)."""
             try:
-                if self.use_ensemble and self.fer_detector:
-                    # Get FER predictions
-                    fer_result = self.fer_detector.detect_emotions(frame_bgr)
-                    # Store face bounding box if detected
-                    if fer_result and len(fer_result) > 0:
-                        self.face_box = fer_result[0]["box"]  # (x, y, w, h)
-                    else:
-                        self.face_box = None  # No face detected
-                    # Get DeepFace predictions
-                    deepface_result = DeepFace.analyze(
-                        frame_bgr,
-                        actions=["emotion"],
-                        enforce_detection=False,
-                        silent=True
-                    )
-                    
-                    if fer_result and len(fer_result) > 0:
-                        fer_emotions = fer_result[0]["emotions"]
-                        deepface_emotions = deepface_result[0]["emotion"]
-                        
-                        # Ensemble: 60% FER + 40% DeepFace
-                        for e in self.EMOTIONS:
-                            fer_score = fer_emotions.get(e, 0.0) * 100  # FER gives 0-1, convert to 0-100
-                            deepface_score = deepface_emotions.get(e, 0.0)  # DeepFace gives 0-100
-                            
-                            # Weighted average
-                            self.emotion_scores[e] = (0.6 * fer_score) + (0.4 * deepface_score)
-                    else:
-                        # If FER fails, fallback to DeepFace only
-                        deepface_emotions = deepface_result[0]["emotion"]
-                        for e in self.EMOTIONS:
-                            self.emotion_scores[e] = float(deepface_emotions.get(e, 0.0))
+                # Convert BGR (OpenCV) to RGB PIL Image
+                rgb_img = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+                pil_img = Image.fromarray(rgb_img)
                 
-                else:
-                    # DeepFace only (fallback)
-                    result = DeepFace.analyze(
-                        frame_bgr,
-                        actions=["emotion"],
-                        enforce_detection=False,
-                        silent=True
-                    )
+                # Detect
+                result = detect_emotion_from_image(pil_img)
+                
+                if result['success']:
+                    self.face_box = result.get('face_box')
                     
-                    emo_dict = result[0]["emotion"]
-                    
+                    # Normalize scores to 0-100 and update self.emotion_scores for 5 target emotions
+                    all_scores = result.get('all_emotions', {})
                     for e in self.EMOTIONS:
-                        self.emotion_scores[e] = float(emo_dict.get(e, 0.0))
-                
-                # Find top emotion
-                self.top_emotion = max(self.EMOTIONS, key=lambda e: self.emotion_scores[e])
-                self.top_conf = int(self.emotion_scores[self.top_emotion])
-                
+                        self.emotion_scores[e] = float(all_scores.get(e, 0.0))
+                        
+                    self.top_emotion = result.get('emotion', 'neutral').lower()
+                    self.top_conf = int(result.get('confidence', 0))
+                else:
+                    self.face_box = None
             except Exception as e:
-                # Keep previous values on error
                 pass
         
         def recv(self, frame):
@@ -133,23 +91,19 @@ if WEBRTC_AVAILABLE:
             
             self.frame_count += 1
             
-            # Run analysis every N frames (for performance)
             if self.frame_count - self.last_analysis_frame >= self.ANALYZE_EVERY_FRAMES:
                 self.analyze_emotion(img)
                 self.last_analysis_frame = self.frame_count
             
-            # ===== TOP HUD BAR =====
             cv2.rectangle(img, (0, 0), (w, 40), (0, 0, 0), -1)
             hud_title = "AI FACE EMOTION HUD (ENSEMBLE)" if self.use_ensemble else "AI FACE EMOTION HUD"
             cv2.putText(img, hud_title,
                         (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.8, self.NEON_PINK, 2)
             
-            # ===== WHITE FACE BOX (TRACKS ACTUAL FACE) =====
             if hasattr(self, 'face_box') and self.face_box is not None:
                 # Use detected face box
                 x, y, box_w, box_h = self.face_box
 
-                # Add padding around detected face
                 padding = 20
                 x = max(0, x - padding)
                 y = max(0, y - padding)
@@ -162,36 +116,30 @@ if WEBRTC_AVAILABLE:
                 # Inner solid white box
                 cv2.rectangle(img, (x, y), (x + box_w, y + box_h), self.WHITE, 2)
 
-                # Top label on box: main emotion + %
                 label = f"{self.top_emotion.upper()} ({self.top_conf}%)"
                 cv2.rectangle(img, (x, y - 30), (x + box_w, y), (0, 0, 0), -1)
                 cv2.putText(img, label,
                             (x + 10, y - 8),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.7, self.WHITE, 2)
             else:
-                # Fallback: center box if no face detected
                 box_w, box_h = 260, 300
                 x = w // 2 - box_w // 2
                 y = h // 2 - box_h // 2
 
                 cv2.rectangle(img, (x, y), (x + box_w, y + box_h), self.WHITE, 2)
 
-                # Show "No face detected" message
                 cv2.putText(img, "Position face in frame",
                             (x + 10, y + box_h // 2),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, self.WHITE, 2)
             
-            # ===== COMPACT SIDE PANEL WITH BACKGROUND BOX =====
             panel_x = 15
             panel_y = 60
             line_h = 24
             max_bar_w = 140
             
-            # Calculate panel dimensions properly
             panel_width = 75 + max_bar_w + 10  # 225px total
             panel_height = len(self.EMOTIONS) * line_h + 20
             
-            # Draw semi-transparent black background
             overlay = img.copy()
             cv2.rectangle(overlay, 
                           (panel_x - 5, panel_y - 25), 
@@ -214,13 +162,11 @@ if WEBRTC_AVAILABLE:
                             (panel_x, y_off),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.WHITE, 1)
                 
-                # Bar background (closer to text)
                 cv2.rectangle(img,
                               (panel_x + 75, y_off - 10),
                               (panel_x + 75 + max_bar_w, y_off + 2),
                               (50, 50, 50), -1)
                 
-                # Bar fill (neon pink for top emotion, gray for others)
                 cv2.rectangle(img,
                               (panel_x + 75, y_off - 10),
                               (panel_x + 75 + bar_w, y_off + 2),
@@ -234,14 +180,19 @@ if WEBRTC_AVAILABLE:
             
             return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-# ====== LOAD MODEL (ONCE) ======
 @st.cache_resource
 def load_model():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     # Try different model paths
-    model_paths = ['./emotion_model_best', './emotion_model_mega', './emotion_model_auto']
-    encoder_paths = ['label_encoder_best.pkl', 'label_encoder_mega.pkl', 'label_encoder_auto.pkl']
+    model_paths = [
+        './emotion_model_best', './emotion_model_mega', './emotion_model_auto',
+        './models/emotion_model_best', './models/emotion_model_mega', './models/emotion_model_auto'
+    ]
+    encoder_paths = [
+        'label_encoder_best.pkl', 'label_encoder_mega.pkl', 'label_encoder_auto.pkl',
+        'models/label_encoder_best.pkl', 'models/label_encoder_mega.pkl', 'models/label_encoder_auto.pkl'
+    ]
     
     model_path = None
     encoder_path = None
@@ -259,7 +210,10 @@ def load_model():
             break
     
     if not model_path or not encoder_path:
-        st.error("❌ Model files not found! Please ensure model is trained.")
+        st.error("X Model files not found! Please ensure model is trained.")
+        if not st.runtime.exists():
+            print("Model files not found! Please run the training script first.")
+            sys.exit(0)
         st.stop()
     
     # Load model
@@ -271,7 +225,11 @@ def load_model():
     label_encoder = pickle.load(open(encoder_path, 'rb'))
     
     # Load metadata
-    metadata_files = ['model_metadata_best.json', 'model_metadata_mega.json', 'model_metadata.json']
+    metadata_files = [
+        'models/text_model_metrics.json',
+        'model_metadata_best.json', 'model_metadata_mega.json', 'model_metadata.json',
+        'models/model_metadata_best.json', 'models/model_metadata_mega.json', 'models/model_metadata.json'
+    ]
     metadata = {}
     for mf in metadata_files:
         if os.path.exists(mf):
@@ -284,68 +242,133 @@ def load_model():
     
     return model, tokenizer, label_encoder, device, metadata
 
+# Try to get actual sample sizes dynamically
+@st.cache_data
+def get_dataset_stats():
+    text_raw = 479126
+    text_train = 80000
+    image_raw = 32298
+    image_train = 28709
+    
+    # Text counts
+    combined_path = "data/auto_combined_dataset.csv"
+    if os.path.exists(combined_path):
+        try:
+            with open(combined_path, "r", encoding="utf-8", errors="ignore") as f:
+                text_raw = sum(1 for _ in f) - 1
+        except:
+            pass
+
+    balanced_path = "data/auto_balanced_dataset.csv"
+    if os.path.exists(balanced_path):
+        try:
+            with open(balanced_path, "r", encoding="utf-8", errors="ignore") as f:
+                text_train = sum(1 for _ in f) - 1
+        except:
+            pass
+            
+    # Image counts
+    def count_images_in_dir(path):
+        if not os.path.exists(path):
+            return 0
+        count = 0
+        for root, dirs, files in os.walk(path):
+            for file in files:
+                if file.lower().endswith(('.png', '.jpg', '.jpeg')):
+                    count += 1
+        return count
+
+    fer_count = count_images_in_dir("FER")
+    friends_raw_count = count_images_in_dir("datasets/friends_dataset")
+    if fer_count > 0 or friends_raw_count > 0:
+        image_raw = fer_count + friends_raw_count
+        
+    fer_train_count = count_images_in_dir("FER/Train")
+    friends_crop_count = count_images_in_dir("datasets/friends_cropped")
+    if fer_train_count > 0 or friends_crop_count > 0:
+        image_train = fer_train_count + friends_crop_count
+        
+    return text_raw, text_train, image_raw, image_train
+
+# Find last update date dynamically based on files
+def get_last_updated_date():
+    import datetime
+    target_paths = [
+        'models/text_model_metrics.json',
+        'models/custom_face_labels.json',
+        'chatbot_mega.py'
+    ]
+    latest_time = 0
+    for p in target_paths:
+        if os.path.exists(p):
+            t = os.path.getmtime(p)
+            if t > latest_time:
+                latest_time = t
+    if latest_time > 0:
+        dt = datetime.datetime.fromtimestamp(latest_time)
+        return dt.strftime("%B %d, %Y")
+    return "January 25, 2026"
+
 # Load model
-with st.spinner("🔄 Loading AI models..."):
+with st.spinner(" Loading AI models..."):
     model, tokenizer, label_encoder, device, metadata = load_model()
 
-# ====== SIDEBAR ======
+text_raw, text_train, image_raw, image_train = get_dataset_stats()
+
 with st.sidebar:
-    st.header("ℹ️ Model Information")
+    st.header("️ Model Information")
     
     # Complete dataset stats
     col1, col2 = st.columns(2)
     with col1:
-        st.metric("Raw Data", "511,704")
-        st.caption("↳ 479K text + 32K images")
+        st.metric("Raw Data", f"{text_raw + image_raw:,}")
+        st.caption(f"↳ {text_raw:,} text + {image_raw:,} images")
     with col2:
-        st.metric("Training", "48,126")
-        st.caption("↳ 19K text + 29K images")
+        st.metric("Training", f"{text_train + image_train:,}")
+        st.caption(f"↳ {text_train:,} text + {image_train:,} images")
     
-    accuracy = 89.05
+    accuracy = metadata.get("accuracy", 0) * 100
     st.metric("Model Accuracy", f"{accuracy:.2f}%")
     
     st.divider()
-    st.subheader("🖥️ System")
+    st.subheader("️ System")
     
     if torch.cuda.is_available():
-        st.success("Running on: 🟢 GPU")
+        st.success("Running on:  GPU")
         st.caption(f"**GPU:** {torch.cuda.get_device_name(0)}")
     else:
-        st.info("Running on: 🔵 CPU")
+        st.info("Running on:  CPU")
     
     st.divider()
-    st.subheader("🛠️ Tech Stack")
-    st.write("• BERT Transformer")
+    st.subheader("️ Tech Stack")
+    st.write(f"• {metadata.get('model', 'RoBERTa')} Transformer")
     st.write("• FER + DeepFace Ensemble")
     st.write("• PyTorch (GPU)")
     st.write("• WebRTC Streaming")
     
     st.divider()
     st.caption("**Version:** 2.2 (Ensemble)")
-    st.caption("**Updated:** Jan 25, 2026")
+    st.caption(f"**Updated:** {get_last_updated_date()}")
 
-# ====== MAIN CONTENT ======
-st.title("🧠 Mental Stress Detection System")
+st.title(" Mental Stress Detection System")
 st.markdown("**Multi-Modal AI for Mental Health Assessment**")
 
-# ====== TABS ======
-tab1, tab2, tab3, tab4 = st.tabs(["📝 Text Analysis", "📸 Face Analysis", "🎥 Live Video", "ℹ️ About"])
+tab1, tab2, tab3, tab4 = st.tabs([" Text Analysis", " Face Analysis", " Live Video", "️ About"])
 
-# ====== TAB 1: TEXT ANALYSIS ======
 with tab1:
     st.header("Text-Based Emotion Detection")
     
     user_input = st.text_area(
-        "💭 How are you feeling today?",
+        " How are you feeling today?",
         height=150,
         placeholder="Express your thoughts, feelings, or experiences...\n\nExamples:\n• I'm feeling anxious about my exams\n• Today was absolutely amazing!\n• I'm worried about my family"
     )
     
-    analyze_btn = st.button("🔍 Analyze Emotion", type="primary", use_container_width=True)
+    analyze_btn = st.button(" Analyze Emotion", type="primary", use_container_width=True)
     
     if analyze_btn:
         if user_input.strip() and len(user_input) > 5:
-            with st.spinner("🤖 Analyzing with AI..."):
+            with st.spinner(" Analyzing with AI..."):
                 start_time = time.time()
                 
                 # Tokenize and move to device
@@ -373,7 +396,7 @@ with tab1:
             
             # Display results
             st.divider()
-            st.subheader("🎯 Analysis Results")
+            st.subheader(" Analysis Results")
             
             col1, col2, col3 = st.columns(3)
             
@@ -385,15 +408,14 @@ with tab1:
                 st.metric("Processing Time", f"{processing_time:.2f}s")
             
             # Top 5 emotions
-            st.subheader("📊 Top 5 Detected Emotions")
+            st.subheader(" Top 5 Detected Emotions")
             for i, (emotion, conf) in enumerate(zip(top5_emotions, top5_confidences), 1):
-                st.progress(float(conf / 100), text=f"{i}. {emotion}: {conf:.1f}%")
+                st.progress(min(1.0, max(0.0, float(conf / 100))), text=f"{i}. {emotion}: {conf:.1f}%")
             
             # Mental health assessment
             st.divider()
-            st.subheader("🏥 Mental Health Assessment")
+            st.subheader(" Mental Health Assessment")
             
-            # CRITICAL keywords (immediate crisis)
             crisis_keywords = [
                 'suicidal', 'suicide', 'kill myself', 'end my life', 'end it all',
                 'self harm', 'self-harm', 'cutting', 'hurt myself',
@@ -426,10 +448,10 @@ with tab1:
             is_crisis = any(crisis in emotion_lower or crisis in input_lower for crisis in crisis_keywords)
             
             if is_crisis:
-                st.error("🚨 **CRITICAL: IMMEDIATE HELP NEEDED**")
+                st.error(" **CRITICAL: IMMEDIATE HELP NEEDED**")
                 
                 st.markdown("""
-                ### 🆘 You are not alone. Help is available RIGHT NOW.
+                ###  You are not alone. Help is available RIGHT NOW.
                 
                 **Immediate Crisis Resources:**
                 """)
@@ -438,55 +460,55 @@ with tab1:
                 
                 with col_crisis1:
                     st.markdown("""
-                    **🇮🇳 India (24/7 Helplines):**
-                    - 📞 **AASRA:** 91-9820466726
-                    - 📞 **Vandrevala Foundation:** 1860-2662-345
-                    - 📞 **iCall:** 91-22-25521111
-                    - 📞 **Sneha India:** 91-44-24640050
-                    - 📞 **Lifeline Foundation:** 033-24637401
+                    ** India (24/7 Helplines):**
+                    -  **AASRA:** 91-9820466726
+                    -  **Vandrevala Foundation:** 1860-2662-345
+                    -  **iCall:** 91-22-25521111
+                    -  **Sneha India:** 91-44-24640050
+                    -  **Lifeline Foundation:** 033-24637401
                     """)
                 
                 with col_crisis2:
                     st.markdown("""
-                    **🌍 International:**
-                    - 📞 **USA:** 988 (Suicide & Crisis Lifeline)
-                    - 📞 **UK:** 116 123 (Samaritans)
-                    - 📞 **Australia:** 13 11 14 (Lifeline)
-                    - 📞 **Canada:** 1-833-456-4566
+                    ** International:**
+                    -  **USA:** 988 (Suicide & Crisis Lifeline)
+                    -  **UK:** 116 123 (Samaritans)
+                    -  **Australia:** 13 11 14 (Lifeline)
+                    -  **Canada:** 1-833-456-4566
                     """)
                 
-                st.error("⚠️ **Please reach out to one of these numbers immediately. Your life matters.**")
+                st.error("️ **Please reach out to one of these numbers immediately. Your life matters.**")
             
             elif any(s in emotion_lower for s in stress_keywords):
-                st.error("⚠️ **Elevated Stress Level Detected**")
+                st.error("️ **Elevated Stress Level Detected**")
                 
                 col_rec1, col_rec2 = st.columns(2)
                 with col_rec1:
                     st.write("**Immediate Actions:**")
-                    st.write("✅ Take 10 deep breaths (4-7-8 technique)")
-                    st.write("✅ Step away for 5-10 minutes")
-                    st.write("✅ Drink water and stretch")
-                    st.write("✅ Ground yourself (5-4-3-2-1 method)")
+                    st.write("√ Take 10 deep breaths (4-7-8 technique)")
+                    st.write("√ Step away for 5-10 minutes")
+                    st.write("√ Drink water and stretch")
+                    st.write("√ Ground yourself (5-4-3-2-1 method)")
                     
                 with col_rec2:
                     st.write("**Helpful Resources:**")
-                    st.write("💬 Talk to someone you trust")
-                    st.write("🧘 Try meditation (Headspace, Calm)")
-                    st.write("📝 Journal your thoughts")
-                    st.write("🚶 Go for a walk outdoors")
+                    st.write(" Talk to someone you trust")
+                    st.write(" Try meditation (Headspace, Calm)")
+                    st.write(" Journal your thoughts")
+                    st.write(" Go for a walk outdoors")
                 
-                st.warning("💡 If these feelings persist for more than 2 weeks, please speak with a mental health professional")
+                st.warning(" If these feelings persist for more than 2 weeks, please speak with a mental health professional")
                 
                 st.info("""
                 **Mental Health Resources (India):**
-                - 📞 **Vandrevala Foundation:** 1860-2662-345 (24/7 emotional support)
-                - 📞 **Mann Talks:** +91-8686139139 (Free counseling)
-                - 🏥 Visit your nearest hospital psychiatry department
+                -  **Vandrevala Foundation:** 1860-2662-345 (24/7 emotional support)
+                -  **Mann Talks:** +91-8686139139 (Free counseling)
+                -  Visit your nearest hospital psychiatry department
                 """)
                     
             elif any(p in emotion_lower for p in positive_keywords):
-                st.success("✅ **Positive Mental State Detected**")
-                st.write("🌟 Great! Your emotional well-being seems positive.")
+                st.success("√ **Positive Mental State Detected**")
+                st.write(" Great! Your emotional well-being seems positive.")
                 
                 col_pos1, col_pos2 = st.columns(2)
                 with col_pos1:
@@ -501,21 +523,20 @@ with tab1:
                     st.write("• Engage in hobbies you enjoy")
                     
             else:
-                st.info("ℹ️ **Neutral Emotional State**")
+                st.info("️ **Neutral Emotional State**")
                 st.write("Your emotional state appears balanced. Stay mindful and check in with yourself regularly.")
                 
         elif user_input.strip():
-            st.warning("⚠️ Please enter at least 5 characters for accurate analysis")
+            st.warning("️ Please enter at least 5 characters for accurate analysis")
         else:
-            st.warning("⚠️ Please enter some text to analyze!")
+            st.warning("️ Please enter some text to analyze!")
 
-# ====== TAB 2: FACE ANALYSIS ======
 with tab2:
     st.header("Face-Based Emotion Detection")
     st.markdown("Upload a photo or take a picture to detect stress from facial expressions")
     
     # Upload option
-    st.subheader("📤 Upload Image")
+    st.subheader(" Upload Image")
     uploaded_file = st.file_uploader(
         "Choose an image (JPG, PNG, JPEG)",
         type=['jpg', 'jpeg', 'png'],
@@ -523,7 +544,7 @@ with tab2:
     )
     
     # Camera option
-    st.subheader("📷 Take Picture")
+    st.subheader(" Take Picture")
     camera_photo = st.camera_input("Take a photo", key="face_camera")
     
     # Process image
@@ -538,7 +559,7 @@ with tab2:
             st.subheader("Original Image")
             st.image(image, use_container_width=True)
         
-        with st.spinner("🔍 Analyzing face with AI (ensemble detection)..."):
+        with st.spinner(" Analyzing face with AI (ensemble detection)..."):
             result = detect_emotion_from_image(image)
             
             if result['success']:
@@ -549,7 +570,7 @@ with tab2:
                 
                 # Results
                 num_models = result.get('num_models', 1)
-                st.success(f"✅ Face emotion detected! (Using {num_models} AI model{'s' if num_models > 1 else ''})")
+                st.success(f"√ Face emotion detected! (Using {num_models} AI model{'s' if num_models > 1 else ''})")
                 
                 res_col1, res_col2, res_col3 = st.columns(3)
                 
@@ -569,7 +590,7 @@ with tab2:
                         st.warning(f"{result['stress_color']} {stress_level}")
                 
                 # Detailed emotions
-                st.subheader("🎭 Detailed Emotion Analysis")
+                st.subheader(" Detailed Emotion Analysis")
                 if num_models > 1:
                     st.caption("Combined prediction from multiple AI models")
                 
@@ -579,34 +600,33 @@ with tab2:
                     
                     with col_name:
                         emoji_map = {
-                            'happy': '😊', 'sad': '😢', 'angry': '😠',
-                            'fear': '😨', 'surprise': '😮', 'disgust': '🤢', 'neutral': '😐'
+                            'happy': '', 'sad': '', 'angry': '',
+                            'fear': '', 'surprise': '', 'disgust': '', 'neutral': ''
                         }
-                        emoji = emoji_map.get(emotion, '🎭')
+                        emoji = emoji_map.get(emotion, '')
                         st.write(f"{emoji} **{emotion.capitalize()}**")
                     
                     with col_bar:
-                        st.progress(float(score / 100))
+                        st.progress(min(1.0, max(0.0, float(score / 100))))
                         st.caption(f"{score:.1f}%")
                 
             else:
-                st.error(f"❌ {result.get('error', 'Could not detect face')}")
+                st.error(f"X {result.get('error', 'Could not detect face')}")
                 st.info("""
-                💡 **Tips for better detection:**
-                - ✅ Ensure face is clearly visible
-                - 💡 Use good lighting
-                - 📷 Face the camera directly
-                - 🚫 Remove sunglasses/masks
-                - 🔍 Get closer to camera
+                 **Tips for better detection:**
+                - √ Ensure face is clearly visible
+                -  Use good lighting
+                -  Face the camera directly
+                -  Remove sunglasses/masks
+                -  Get closer to camera
                 """)
 
-# ====== TAB 3: LIVE VIDEO ANALYSIS ======
 with tab3:
-    st.header("🎥 Real-Time Emotion Detection")
+    st.header(" Real-Time Emotion Detection")
     st.markdown("**Live webcam emotion analysis with AI HUD overlay (ENSEMBLE MODE)**")
     
     if not WEBRTC_AVAILABLE:
-        st.error("❌ **Required libraries not installed**")
+        st.error("X **Required libraries not installed**")
         st.info("""
         To enable live video analysis, install:
         
@@ -620,7 +640,7 @@ with tab3:
         col1, col2 = st.columns([2, 1])
         
         with col1:
-            st.markdown("### 📹 Live Feed")
+            st.markdown("###  Live Feed")
             webrtc_ctx = webrtc_streamer(
                 key="emotion-detection-live",
                 mode=WebRtcMode.SENDRECV,
@@ -633,7 +653,7 @@ with tab3:
             )
         
         with col2:
-            st.markdown("### 📋 Instructions")
+            st.markdown("###  Instructions")
             st.info("""
             **How to use:**
             1. Click **START** button
@@ -643,17 +663,19 @@ with tab3:
             5. Click **STOP** to end
             """)
             
-            st.markdown("### 🎨 Features")
-            st.success("""
-            ✅ Live face detection  
-            ✅ **ENSEMBLE MODE**
-            ✅ 60% FER + 40% DeepFace
-            ✅ Real-time HUD overlay  
-            ✅ Neon pink highlights  
-            ✅ Compact side panel
+            st.markdown("###  Features")
+            custom_face_trained = os.path.exists("models/custom_face_model.pth")
+            weights_desc = "40% FER + 30% DeepFace + 30% Custom" if custom_face_trained else "60% FER + 40% DeepFace"
+            st.success(f"""
+            √ Live face detection  
+            √ **ENSEMBLE MODE**
+            √ {weights_desc}
+            √ Real-time HUD overlay  
+            √ Neon pink highlights  
+            √ Compact side panel
             """)
             
-            st.markdown("### ⚙️ Performance")
+            st.markdown("### ️ Performance")
             st.metric("Expected FPS", "15-25")
             st.metric("Update Rate", "~1s")
             st.metric("Accuracy", "85-90%")
@@ -664,27 +686,38 @@ with tab3:
     info_col1, info_col2, info_col3 = st.columns(3)
     
     with info_col1:
-        st.markdown("### 📊 Tracked Emotions")
+        st.markdown("###  Tracked Emotions")
         st.write("""
-        1. 😠 **Angry**
-        2. 😊 **Happy**
-        3. 😢 **Sad**
-        4. 😮 **Surprise**
-        5. 😐 **Neutral**
+        1.  **Angry**
+        2.  **Happy**
+        3.  **Sad**
+        4.  **Surprise**
+        5.  **Neutral**
         """)
     
     with info_col2:
-        st.markdown("### 🔬 Technology")
-        st.write("""
-        - **FER:** 60% weight
-        - **DeepFace:** 40% weight
-        - **Ensemble:** Weighted average
-        - **WebRTC:** Real-time stream
-        - **Update:** Every 1 second
-        """)
+        st.markdown("###  Technology")
+        custom_face_trained = os.path.exists("models/custom_face_model.pth")
+        if custom_face_trained:
+            st.write("""
+            - **FER:** 40% weight
+            - **DeepFace:** 30% weight
+            - **Custom model:** 30% weight
+            - **Ensemble:** Weighted average
+            - **WebRTC:** Real-time stream
+            - **Update:** Every 1 second
+            """)
+        else:
+            st.write("""
+            - **FER:** 60% weight
+            - **DeepFace:** 40% weight
+            - **Ensemble:** Weighted average
+            - **WebRTC:** Real-time stream
+            - **Update:** Every 1 second
+            """)
     
     with info_col3:
-        st.markdown("### 💡 Tips")
+        st.markdown("###  Tips")
         st.info("""
         **Best results:**
         - Good lighting
@@ -694,76 +727,83 @@ with tab3:
         - Wait 1-2 seconds for analysis
         """)
 
-# ====== TAB 4: ABOUT ======
 with tab4:
     st.header("About This Project")
     st.markdown("""
-    ### 🎓 Multi-Modal Mental Stress Detection System
+    ###  Multi-Modal Mental Stress Detection System
     
     An advanced AI system combining text and facial emotion analysis for comprehensive mental health assessment.
     """)
     
     # Model Performance
     st.divider()
-    st.subheader("📊 Model Performance")
+    st.subheader(" Model Performance")
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        samples = 48126
+        samples = metadata.get("total_samples", 0)
         st.metric("Training Samples", f"{samples:,}")
     
     with col2:
-        classes = metadata.get('num_classes', 25)
+        classes = metadata.get("num_classes", 0)
         st.metric("Emotion Classes", classes if classes else "25+")
     
     with col3:
-        accuracy = 89.05
+        accuracy = metadata.get("accuracy", 0) * 100
         st.metric("Text Accuracy", f"{accuracy:.2f}%")
     
-    st.caption("**Face Detection (Live):** FER + DeepFace Ensemble (60%-40%) - Accuracy ~90%")
-    st.caption("**Face Detection (Photo):** FER + DeepFace Ensemble - Accuracy ~95%")
+    custom_face_trained = os.path.exists("models/custom_face_model.pth")
+    live_weights = "FER + DeepFace + Custom Ensemble (40%-30%-30%)" if custom_face_trained else "FER + DeepFace Ensemble (60%-40%)"
+    photo_weights = "FER + DeepFace + Custom Ensemble" if custom_face_trained else "FER + DeepFace Ensemble"
+    
+    st.caption(f"**Face Detection (Live):** {live_weights} - Accuracy ~90%")
+    st.caption(f"**Face Detection (Photo):** {photo_weights} - Accuracy ~95%")
     
     # System Info
     st.divider()
-    st.subheader("🖥️ System Information")
+    st.subheader("️ System Information")
     
     if torch.cuda.is_available():
-        st.success("Running on: 🟢 GPU (CUDA Accelerated)")
+        st.success("Running on:  GPU (CUDA Accelerated)")
         st.caption(f"**GPU:** {torch.cuda.get_device_name(0)}")
     else:
-        st.info("Running on: 🔵 CPU")
+        st.info("Running on:  CPU")
     
     # Technology Stack
     st.divider()
-    st.subheader("🛠️ Technology Stack")
+    st.subheader("️ Technology Stack")
     
     col_tech1, col_tech2 = st.columns(2)
     
     with col_tech1:
-        st.markdown("""
+        st.markdown(f"""
         **Text Analysis:**
-        - BERT Transformer
+        - {metadata.get('model', 'RoBERTa')} Transformer
         - PyTorch Framework
         - Hugging Face Transformers
         - Multi-dataset Training
         """)
     
     with col_tech2:
-        st.markdown("""
+        tech_weights = "Ensemble Approach (40%-30%-30%)" if custom_face_trained else "Ensemble Approach (60%-40%)"
+        st.markdown(f"""
         **Face Analysis:**
         - FER (Facial Emotion Recognition)
         - DeepFace Multi-model AI
-        - Ensemble Approach (60%-40%)
+        - {tech_weights}
         - WebRTC Real-time Streaming
         - Gaming-style HUD Overlay
         """)
     
     # Project Info
     st.divider()
-    st.subheader("👨‍🎓 Project Information")
+    st.subheader("‍ Project Information")
     
-    st.markdown("""
+    classes_count = metadata.get("num_classes", 8)
+    class_list_str = f"({', '.join(metadata.get('classes', []))})" if metadata.get("classes") else f"({classes_count} emotions)"
+    
+    st.markdown(f"""
     **Developed by:** Susmit Sil  
     **Institution:** Techno India University  
     **Course:** BTech Computer Science Engineering  
@@ -771,26 +811,26 @@ with tab4:
     **Project Type:** Final Year Project
     
     **Features:**
-    - Real-time text emotion analysis (25+ emotions)
+    - Real-time text emotion analysis {class_list_str}
     - Webcam/photo-based face emotion detection with ensemble
     - Live video emotion tracking with gaming HUD
     - Multi-modal stress assessment
     - GPU-accelerated inference
     - WebRTC real-time streaming
-    - 60% FER + 40% DeepFace ensemble for accuracy
+    - {"40% FER + 30% DeepFace + 30% Custom" if custom_face_trained else "60% FER + 40% DeepFace"} ensemble for accuracy
     """)
     
     st.divider()
-    st.caption("Last Updated: January 25, 2026")
+    st.caption(f"Last Updated: {get_last_updated_date()}")
 
 # Footer
 st.divider()
 col_footer1, col_footer2 = st.columns([3, 1])
 with col_footer1:
-    st.caption("🎓 Final Year Project: Mental Stress Detection Using AI")
-    st.caption("📊 Dataset: 511K raw → 54K processed → 48K training | 25+ emotions | BERT + FER + DeepFace Ensemble")
+    st.caption(" Final Year Project: Mental Stress Detection Using AI")
+    st.caption(f" Dataset: {text_raw + image_raw:,} raw -> {text_train + image_train:,} training | {classes_count} emotions | {metadata.get('model', 'RoBERTa')} + FER + DeepFace Ensemble")
 with col_footer2:
     if torch.cuda.is_available():
-        st.caption("🟢 GPU Accelerated")
+        st.caption(" GPU Accelerated")
     else:
-        st.caption("🔵 CPU Mode")
+        st.caption(" CPU Mode")
