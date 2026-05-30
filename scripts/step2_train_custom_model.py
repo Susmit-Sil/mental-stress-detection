@@ -93,7 +93,7 @@ def build_label_map(fer_dir: Path, friends_dir: Path) -> dict:
 # ==================== MODEL ====================
 
 def build_model(num_classes: int) -> nn.Module:
-    """MobileNetV3-Small — fast, lightweight, great for real-time."""
+    """MobileNetV3-Small - fast, lightweight, great for real-time."""
     model = models.mobilenet_v3_small(weights=models.MobileNet_V3_Small_Weights.DEFAULT)
 
     # Replace final classifier to match our emotion count

@@ -1,9 +1,7 @@
 @echo off
 title Mental Stress Detection AI - Setup ^& Launch
-echo ========================================
 echo  Mental Stress Detection AI
-echo  Auto-Setup ^& Launch Script
-echo ========================================
+echo  Setup ^& Launch Script
 echo.
 
 python --version >nul 2>&1
@@ -93,8 +91,6 @@ if exist "models\emotion_model_auto\" (
 echo.
 
 echo [5/5] Launching Streamlit app...
-echo ========================================
 echo  App is starting. Press Ctrl+C to stop.
-echo ========================================
 echo.
 %VENV_STREAMLIT% run chatbot_mega.py

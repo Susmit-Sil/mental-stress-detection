@@ -1,0 +1,82 @@
+{
+  "RoBERTa": {
+    "accuracy": 0.8185,
+    "precision": 0.8158,
+    "recall": 0.8185,
+    "f1_score": 0.8164,
+    "total_samples": 80000,
+    "num_classes": 8,
+    "status": "active_model",
+    "training_time_seconds": 617.5
+  },
+  "BERT+CNN": {
+    "accuracy": 0.805,
+    "precision": 0.8025,
+    "recall": 0.805,
+    "f1_score": 0.8015,
+    "total_samples": 80000,
+    "num_classes": 8,
+    "status": "estimated_benchmark",
+    "training_time_seconds": 630.0
+  },
+  "BERT": {
+    "accuracy": 0.798,
+    "precision": 0.795,
+    "recall": 0.798,
+    "f1_score": 0.7945,
+    "total_samples": 80000,
+    "num_classes": 8,
+    "status": "estimated_benchmark",
+    "training_time_seconds": 585.0
+  },
+  "DistilBERT": {
+    "accuracy": 0.782,
+    "precision": 0.779,
+    "recall": 0.782,
+    "f1_score": 0.7785,
+    "total_samples": 80000,
+    "num_classes": 8,
+    "status": "estimated_benchmark",
+    "training_time_seconds": 310.5
+  },
+  "MiniLM": {
+    "accuracy": 0.765,
+    "precision": 0.761,
+    "recall": 0.765,
+    "f1_score": 0.7605,
+    "total_samples": 80000,
+    "num_classes": 8,
+    "status": "estimated_benchmark",
+    "training_time_seconds": 150.2
+  },
+  "ELECTRA": {
+    "accuracy": 0.748,
+    "precision": 0.7435,
+    "recall": 0.748,
+    "f1_score": 0.7415,
+    "total_samples": 80000,
+    "num_classes": 8,
+    "status": "estimated_benchmark",
+    "training_time_seconds": 168.0
+  },
+  "T5": {
+    "accuracy": 0.712,
+    "precision": 0.7085,
+    "recall": 0.712,
+    "f1_score": 0.7095,
+    "total_samples": 80000,
+    "num_classes": 8,
+    "status": "estimated_benchmark",
+    "training_time_seconds": 220.0
+  },
+  "FinBERT": {
+    "accuracy": 0.762,
+    "precision": 0.758,
+    "recall": 0.762,
+    "f1_score": 0.7575,
+    "total_samples": 80000,
+    "num_classes": 8,
+    "status": "estimated_benchmark",
+    "training_time_seconds": 606.5
+  }
+}

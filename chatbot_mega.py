@@ -460,7 +460,7 @@ with tab1:
                 
                 with col_crisis1:
                     st.markdown("""
-                    ** India (24/7 Helplines):**
+                    **India (24/7 Helplines):**
                     -  **AASRA:** 91-9820466726
                     -  **Vandrevala Foundation:** 1860-2662-345
                     -  **iCall:** 91-22-25521111
@@ -470,7 +470,7 @@ with tab1:
                 
                 with col_crisis2:
                     st.markdown("""
-                    ** International:**
+                    **International:**
                     -  **USA:** 988 (Suicide & Crisis Lifeline)
                     -  **UK:** 116 123 (Samaritans)
                     -  **Australia:** 13 11 14 (Lifeline)
@@ -670,8 +670,7 @@ with tab3:
             √ Live face detection  
             √ **ENSEMBLE MODE**
             √ {weights_desc}
-            √ Real-time HUD overlay  
-            √ Neon pink highlights  
+            √ Real-time HUD overlay
             √ Compact side panel
             """)
             
@@ -804,7 +803,7 @@ with tab4:
     class_list_str = f"({', '.join(metadata.get('classes', []))})" if metadata.get("classes") else f"({classes_count} emotions)"
     
     st.markdown(f"""
-    **Developed by:** Susmit Sil  
+    **Developed by:** Susmit Sil, Saimoon Parvin, Chitrita Neogy, Aryan Chettri  
     **Institution:** Techno India University  
     **Course:** BTech Computer Science Engineering  
     **Year:** 2026  
