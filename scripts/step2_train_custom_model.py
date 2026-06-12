@@ -36,7 +36,7 @@ DEVICE         = torch.device("cuda")
 ALL_EMOTIONS   = ["angry", "happy", "neutral", "sad", "surprise", "fear", "disgust"]
 
 
-# ==================== DATASET ====================
+#  DATASET 
 
 class EmotionDataset(Dataset):
     def __init__(self, samples: list[tuple[str, int]], transform=None):
@@ -70,7 +70,7 @@ def collect_samples(root: Path, label_map: dict, weight: int = 1) -> list:
         files = list(folder.glob("*.jpg")) + list(folder.glob("*.png"))
         for f in files:
             samples.extend([(str(f), label)] * weight)  # repeat = higher weight
-
+ 
     return samples
 
 
@@ -90,7 +90,7 @@ def build_label_map(fer_dir: Path, friends_dir: Path) -> dict:
     return {e: i for i, e in enumerate(sorted_emotions)}
 
 
-# ==================== MODEL ====================
+#  MODEL 
 
 def build_model(num_classes: int) -> nn.Module:
     """MobileNetV3-Small - fast, lightweight, great for real-time."""
@@ -103,7 +103,7 @@ def build_model(num_classes: int) -> nn.Module:
     return model.to(DEVICE)
 
 
-# ==================== TRAINING ====================
+#  TRAINING
 
 def make_weighted_sampler(samples: list, num_classes: int):
     """Balance classes automatically so no emotion dominates training."""
@@ -149,7 +149,7 @@ def eval_epoch(model, loader, criterion):
     return total_loss / total, correct / total, all_preds, all_labels
 
 
-# ==================== MAIN ====================
+#  MAIN 
 
 def main():
     print("=" * 60)

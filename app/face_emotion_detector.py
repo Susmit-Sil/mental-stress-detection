@@ -11,9 +11,6 @@ import torch.nn as nn
 from torchvision import transforms, models
 warnings.filterwarnings('ignore')
 
-# ─────────────────────────────────────────────────────────────
-#  Custom Model & FER Cache (auto-detects trained weights and caches models)
-# ─────────────────────────────────────────────────────────────
 
 _CUSTOM_MODEL      = None   # MobileNetV3-Small instance
 _CUSTOM_LABELS     = None   # {index: emotion_name}
@@ -119,14 +116,14 @@ def preprocess_face_image(image):
     
     return image
 
-def detect_emotion_from_image(image):
+def detect_emotion_from_image(image, use_custom=True):
     """
     Ensemble: FER (40%) + DeepFace (30%) + Custom Friends Model (30%)
-    Falls back to FER (60%) + DeepFace (40%) if custom model is not trained yet.
+    Falls back to FER (60%) + DeepFace (40%) if custom model is not trained yet or custom is disabled.
     """
     try:
         # Try loading custom model (silent no-op if not trained yet)
-        custom_available = _load_custom_model()
+        custom_available = _load_custom_model() if use_custom else False
 
         # Preprocess image first
         image = preprocess_face_image(image)
@@ -220,6 +217,14 @@ def detect_emotion_from_image(image):
             if total_weight > 0:
                 combined_emotions[emotion] = weighted_sum / total_weight
         
+        boost_factors = {
+            'sad': 1.07,
+            'angry': 1.07,
+            'fear': 1.05
+        }
+        for emotion, boost in boost_factors.items():
+            if emotion in combined_emotions:
+                combined_emotions[emotion] = min(100.0, combined_emotions[emotion] * boost)
         # Get dominant emotion
         if not combined_emotions:
             return {'success': False, 'error': 'Could not analyze emotions'}

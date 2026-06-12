@@ -1,7 +1,7 @@
 @echo off
-title Mental Stress Detection AI - Setup ^& Launch
+title Mental Stress Detection AI
 echo  Mental Stress Detection AI
-echo  Setup ^& Launch Script
+echo  Start
 echo.
 
 python --version >nul 2>&1

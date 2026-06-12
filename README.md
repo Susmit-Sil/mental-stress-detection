@@ -6,9 +6,7 @@ Developed as a Final Year Project for the BTech Computer Science Engineering pro
 
 ## Research and Development Team
 * Susmit Sil
-* Saimoon Parvin
-* Chitrita Neogy
-* Aryan Chettri
+
 
 Institution: Techno India University, Kolkata
 

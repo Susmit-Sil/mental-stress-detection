@@ -37,6 +37,9 @@ st.set_page_config(
 # Performance optimization
 torch.backends.cudnn.benchmark = True
 
+USE_CUSTOM_IN_ENSEMBLE = True
+
+
 if WEBRTC_AVAILABLE:
     class EmotionVideoTransformer(VideoProcessorBase):
         def __init__(self):
@@ -65,7 +68,7 @@ if WEBRTC_AVAILABLE:
                 pil_img = Image.fromarray(rgb_img)
                 
                 # Detect
-                result = detect_emotion_from_image(pil_img)
+                result = detect_emotion_from_image(pil_img, use_custom=USE_CUSTOM_IN_ENSEMBLE)
                 
                 if result['success']:
                     self.face_box = result.get('face_box')
@@ -342,7 +345,7 @@ with st.sidebar:
     st.divider()
     st.subheader("️ Tech Stack")
     st.write(f"• {metadata.get('model', 'RoBERTa')} Transformer")
-    st.write("• FER + DeepFace Ensemble")
+    st.write("• FER + DeepFace + Custom Dataset Ensemble")
     st.write("• PyTorch (GPU)")
     st.write("• WebRTC Streaming")
     
@@ -560,7 +563,7 @@ with tab2:
             st.image(image, use_container_width=True)
         
         with st.spinner(" Analyzing face with AI (ensemble detection)..."):
-            result = detect_emotion_from_image(image)
+            result = detect_emotion_from_image(image, use_custom=USE_CUSTOM_IN_ENSEMBLE)
             
             if result['success']:
                 with col2:
@@ -803,7 +806,7 @@ with tab4:
     class_list_str = f"({', '.join(metadata.get('classes', []))})" if metadata.get("classes") else f"({classes_count} emotions)"
     
     st.markdown(f"""
-    **Developed by:** Susmit Sil, Saimoon Parvin, Chitrita Neogy, Aryan Chettri  
+    **Developed by:** Susmit Sil
     **Institution:** Techno India University  
     **Course:** BTech Computer Science Engineering  
     **Year:** 2026  
@@ -827,7 +830,7 @@ st.divider()
 col_footer1, col_footer2 = st.columns([3, 1])
 with col_footer1:
     st.caption(" Final Year Project: Mental Stress Detection Using AI")
-    st.caption(f" Dataset: {text_raw + image_raw:,} raw -> {text_train + image_train:,} training | {classes_count} emotions | {metadata.get('model', 'RoBERTa')} + FER + DeepFace Ensemble")
+    st.caption(f" Dataset: {text_raw + image_raw:,} raw -> {text_train + image_train:,} training | {classes_count} emotions | {metadata.get('model', 'RoBERTa')} + FER + DeepFace + Custom Dataset Ensemble")
 with col_footer2:
     if torch.cuda.is_available():
         st.caption(" GPU Accelerated")
