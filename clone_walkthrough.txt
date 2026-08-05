@@ -1,0 +1,62 @@
+CLONE WALKTHROUGH & RECOVERY INSTRUCTIONS
+========================================
+
+To free up local space and archive the project state, the following directories were zipped, uploaded to Hugging Face, and deleted from this local repository:
+1. /data/
+2. /datasets/
+3. /models/
+4. /Model-Evaluation/
+5. /results_auto/
+
+All these directories have been archived as zip files in the Hugging Face dataset repository:
+Repository: mental-stress-detection-dataset (under your username)
+
+RECOVERY PROCEDURE FOR A NEW PC
+------------------------------
+
+1. Clone this Git repository:
+   git clone https://github.com/Susmit-Sil/mental-stress-detection
+   cd mental-stress-detection
+
+2. Set up the virtual environment:
+   python -m venv venv
+   .\venv\Scripts\activate   # On Windows
+   pip install -r requirements.txt
+
+3. Download and extract the archived directories:
+   Ensure you have huggingface_hub installed:
+   pip install huggingface_hub
+
+   Create and run the following Python recovery script (`recover_project.py`) to download and restore the data:
+
+   ```python
+   import os
+   import zipfile
+   from huggingface_hub import hf_hub_download
+
+   REPO_ID = "susmitsil07/mental-stress-detection-dataset"
+   TOKEN = os.environ.get("HF_TOKEN", "<YOUR_HF_TOKEN>")
+   ZIPS = ["data.zip", "datasets.zip", "models.zip", "Model-Evaluation.zip", "results_auto.zip"]
+
+   def main():
+       for zip_name in ZIPS:
+           print(f"Downloading {zip_name}...")
+           try:
+               zip_path = hf_hub_download(
+                   repo_id=REPO_ID,
+                   filename=zip_name,
+                   repo_type="dataset",
+                   token=TOKEN
+               )
+               print(f"Extracting {zip_name}...")
+               with zipfile.ZipFile(zip_path, 'r') as zipf:
+                   zipf.extractall(".")
+               print(f"Successfully recovered {zip_name.replace('.zip', '')}!")
+           except Exception as e:
+               print(f"Error recovering {zip_name}: {e}")
+
+   if __name__ == "__main__":
+       main()
+   ```
+
+4. Once the recovery script completes, you will have all original folders restored exactly as they were.

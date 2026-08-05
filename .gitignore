@@ -39,3 +39,6 @@ Thumbs.db
 # ── Large model artifacts ─────────────────────────────────────────────────────
 /Model-Evaluation/
 /FER/
+/data/
+/models/
+*.zip
