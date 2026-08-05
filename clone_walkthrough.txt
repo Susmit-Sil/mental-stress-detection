@@ -36,7 +36,7 @@ RECOVERY PROCEDURE FOR A NEW PC
 
    REPO_ID = "susmitsil07/mental-stress-detection-dataset"
    TOKEN = os.environ.get("HF_TOKEN", "<YOUR_HF_TOKEN>")
-   ZIPS = ["data.zip", "datasets.zip", "models.zip", "Model-Evaluation.zip", "results_auto.zip"]
+   ZIPS = ["data.zip", "datasets.zip", "models.zip", "Model-Evaluation.zip", "results_auto.zip", "FER.zip"]
 
    def main():
        for zip_name in ZIPS:

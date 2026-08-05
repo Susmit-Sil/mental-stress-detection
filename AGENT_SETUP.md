@@ -34,7 +34,7 @@ import os, zipfile
 from huggingface_hub import hf_hub_download
 token = os.environ.get('HF_TOKEN', '<YOUR_HF_TOKEN>')
 repo = 'susmitsil07/mental-stress-detection-dataset'
-files = ['data.zip', 'datasets.zip', 'models.zip', 'Model-Evaluation.zip', 'results_auto.zip']
+files = ['data.zip', 'datasets.zip', 'models.zip', 'Model-Evaluation.zip', 'results_auto.zip', 'FER.zip']
 for f in files:
     try:
         p = hf_hub_download(repo_id=repo, filename=f, repo_type='dataset', token=token)
